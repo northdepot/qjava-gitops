@@ -1,0 +1,61 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  labels:
+    pipelines.openshift.io/runtime: generic
+    pipelines.openshift.io/strategy: docker
+    pipelines.openshift.io/used-by: build-cloud
+  name: pull-request-validate
+spec: 
+  params:
+    - description: Gitops Repo Url 
+      name: git-url
+      type: string
+    - default: ""
+      description: Revision of the Source Repository
+      name: revision
+      type: string 
+    - description: Validate images in deployment during pull-requests 
+      name: commit-message
+      type: string 
+  tasks:
+    - name: clone-repository
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.revision) 
+      taskRef:
+        name: git-clone 
+      workspaces:
+        - name: output
+          workspace: workspace
+        - name: basic-auth
+          workspace: git-auth
+    - name: gather-deploy-images
+      params:
+        - name: gitops-repo-url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.revision)  
+        - name: target-branch
+          value: $(params.target-branch)   
+        - name: commit-message
+          value: $(params.commit-message)  
+      runAfter:
+        - clone-repository
+      taskRef:
+        kind: Task
+        name: gather-deploy-images
+      workspaces:
+        - name: output
+          workspace: workspace  
+    - name: verify-enteprise-contract  
+      params:
+        - name: IMAGES
+          value:  $(tasks.gather-deploy-images.results.IMAGES_TO_VERIFY) 
+        - name: STRICT
+          value:  "false" 
+      taskRef:
+        kind: Task
+        name: verify-enterprise-contract
